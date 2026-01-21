@@ -1,0 +1,42 @@
+name: TestRigor PR Gate Demo
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-before-merge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Trigger TestRigor Tests
+        id: trigger
+        run: |
+          RESPONSE=$(curl -s -X POST "https://api.testrigor.com/api/v1/executions" \
+            -H "Authorization: Bearer ${{ secrets.TESTRIGOR_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "project_id": "${{ secrets.TESTRIGOR_PROJECT_ID }}",
+              "suite_id": "${{ secrets.TESTRIGOR_SUITE_ID }}"
+            }')
+
+          EXECUTION_ID=$(echo $RESPONSE | jq -r '.id')
+          echo "execution_id=$EXECUTION_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for Execution
+        run: sleep 90
+
+      - name: Validate Test Result
+        run: |
+          RESULT=$(curl -s -X GET "https://api.testrigor.com/api/v1/executions/${{ steps.trigger.outputs.execution_id }}" \
+            -H "Authorization: Bearer ${{ secrets.TESTRIGOR_API_TOKEN }}")
+
+          STATUS=$(echo $RESULT | jq -r '.status')
+
+          if [ "$STATUS" != "passed" ]; then
+            exit 1
+          fi
